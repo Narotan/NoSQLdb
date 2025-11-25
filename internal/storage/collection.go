@@ -21,13 +21,8 @@ func NewCollection(name string) *Collection {
 	}
 }
 
-// generateID — простая генерация уникального ID
 func generateID() string {
 	return fmt.Sprintf("%d-%d", time.Now().UnixNano(), rand.Intn(1000000))
-}
-
-func init() {
-	rand.Seed(time.Now().UnixNano())
 }
 
 // LoadCollection загружает колллекцию из базы данных
@@ -53,7 +48,9 @@ func LoadCollection(name string) (*Collection, error) {
 		hmap.Put(k, v)
 	}
 
-	return NewCollection(name), nil
+	coll := NewCollection(name)
+	coll.Data = hmap
+	return coll, nil
 }
 
 // Save сохраняет данные в json в базу данных
@@ -102,13 +99,13 @@ func (c *Collection) Delete(id string) bool {
 	return c.Data.Remove(id)
 }
 
-// All возвращает все документы как []map[string]any
 func (c *Collection) All() []map[string]any {
-	result := []map[string]any{}
-	for _, v := range c.Data.Items() {
+	items := c.Data.Items()
+	docs := make([]map[string]any, 0, len(items))
+	for _, v := range items {
 		if doc, ok := v.(map[string]any); ok {
-			result = append(result, doc)
+			docs = append(docs, doc)
 		}
 	}
-	return result
+	return docs
 }
