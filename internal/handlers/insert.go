@@ -2,36 +2,35 @@ package handlers
 
 import (
 	"fmt"
-	"nosql_db/internal/query"
+	"nosql_db/internal/api"
 	"nosql_db/internal/storage"
 )
 
-// cmdInsert обрабатывает команду вставки документа
-func cmdInsert(dbName, jsonDoc string) error {
-	if jsonDoc == "" {
-		return fmt.Errorf("insert requires a JSON document")
+func handleInsert(coll *storage.Collection, req api.Request) api.Response {
+	if len(req.Data) == 0 {
+		return api.Response{Status: api.StatusError, Message: "no data provided for insert"}
 	}
-	doc, err := query.ParseDocument(jsonDoc)
-	if err != nil {
-		return err
+
+	count := 0
+	for _, doc := range req.Data {
+		_, err := coll.Insert(doc)
+		if err != nil {
+			return api.Response{Status: api.StatusError, Message: fmt.Sprintf("insert error: %v", err)}
+		}
+		count++
 	}
-	coll, err := storage.LoadCollection(dbName)
-	if err != nil {
-		return fmt.Errorf("failed to load collection: %w", err)
-	}
-	if err := coll.LoadAllIndexes(); err != nil {
-		return fmt.Errorf("failed to load indexes: %w", err)
-	}
-	id, err := coll.Insert(doc)
-	if err != nil {
-		return fmt.Errorf("failed to insert document: %w", err)
-	}
+
 	if err := coll.Save(); err != nil {
-		return fmt.Errorf("failed to save collection: %w", err)
+		return api.Response{Status: api.StatusError, Message: "failed to save data"}
 	}
+
 	if err := coll.SaveAllIndexes(); err != nil {
-		return fmt.Errorf("failed to save indexes: %w", err)
+		return api.Response{Status: api.StatusError, Message: "failed to save indexes"}
 	}
-	fmt.Printf("Document inserted successfully. ID: %s\n", id)
-	return nil
+
+	return api.Response{
+		Status:  api.StatusSuccess,
+		Message: fmt.Sprintf("Inserted %d document(s)", count),
+		Count:   count,
+	}
 }

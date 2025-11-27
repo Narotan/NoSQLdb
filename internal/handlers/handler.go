@@ -1,33 +1,34 @@
 package handlers
 
-import "fmt"
+import (
+	"fmt"
+	"nosql_db/internal/api"
+	"nosql_db/internal/storage"
+)
 
-// ExecuteCommand главный обработчик команд
-func ExecuteCommand(dbName, command, jsonQuery string) error {
-	switch command {
-	case "insert":
-		return cmdInsert(dbName, jsonQuery)
-	case "find":
-		return cmdFind(dbName, jsonQuery)
-	case "delete":
-		return cmdDelete(dbName, jsonQuery)
-	case "create_index":
-		return cmdCreateIndex(dbName, jsonQuery)
-	default:
-		return fmt.Errorf("unknown command: %s", command)
+// HandleRequest — точка входа для обработки запросов
+func HandleRequest(req api.Request) api.Response {
+	if req.Database == "" {
+		return api.Response{Status: api.StatusError, Message: "database name is required"}
 	}
-}
 
-// PrintUsage выводит справку по использованию
-func PrintUsage() {
-	fmt.Println("Usage:")
-	fmt.Println("  server <database_name> insert '<json_document>'")
-	fmt.Println("  server <database_name> find '<json_query>'")
-	fmt.Println("  server <database_name> delete '<json_query>'")
-	fmt.Println("  server <database_name> create_index <field_name>")
-	fmt.Println("\nExamples:")
-	fmt.Println(`  server my_database insert '{"name": "Alice", "age": 25, "city": "London"}'`)
-	fmt.Println(`  server my_database find '{"age": 25}'`)
-	fmt.Println(`  server my_database find '{"age": {"$gt": 20}}'`)
-	fmt.Println(`  server my_database delete '{"name": {"$like": "A%"}}'`)
+	coll, err := storage.LoadCollection(req.Database)
+	if err != nil {
+		return api.Response{Status: api.StatusError, Message: fmt.Sprintf("failed to load database: %v", err)}
+	}
+
+	_ = coll.LoadAllIndexes()
+
+	switch req.Command {
+	case api.CmdInsert:
+		return handleInsert(coll, req)
+	case api.CmdFind:
+		return handleFind(coll, req)
+	case api.CmdDelete:
+		return handleDelete(coll, req)
+	case api.CmdCreateIndex:
+		return handleCreateIndex(coll, req)
+	default:
+		return api.Response{Status: api.StatusError, Message: fmt.Sprintf("unknown command: %s", req.Command)}
+	}
 }

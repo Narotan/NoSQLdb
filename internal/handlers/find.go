@@ -1,64 +1,61 @@
 package handlers
 
 import (
-	"encoding/json"
-	"fmt"
+	"nosql_db/internal/api"
 	"nosql_db/internal/index"
 	"nosql_db/internal/operators"
-	"nosql_db/internal/query"
 	"nosql_db/internal/storage"
 )
 
-// cmdFind обрабатывает команду поиска документов
-func cmdFind(dbName, jsonQuery string) error {
-	q, err := query.Parse(jsonQuery)
-	if err != nil {
-		return err
-	}
-	coll, err := storage.LoadCollection(dbName)
-	if err != nil {
-		return fmt.Errorf("failed to load collection: %w", err)
-	}
-	if err := coll.LoadAllIndexes(); err != nil {
-		return fmt.Errorf("failed to load indexes: %w", err)
-	}
+func handleFind(coll *storage.Collection, req api.Request) api.Response {
 	var results []map[string]any
-	if len(q.Conditions) == 1 && !hasLogicalOperators(q.Conditions) {
-		for field, condition := range q.Conditions {
+	usedIndex := false
+
+	if len(req.Query) == 1 && !hasLogicalOperators(req.Query) {
+		for field, condition := range req.Query {
 			if coll.HasIndex(field) {
 				results = findWithIndex(coll, field, condition)
+				usedIndex = true
 				break
 			}
 		}
 	}
-	if results == nil {
-		results = findFullScan(coll, q)
+
+	if !usedIndex {
+		results = findFullScan(coll, req.Query)
 	}
-	if len(results) == 0 {
-		fmt.Println("[]")
-		return nil
+
+	return api.Response{
+		Status: api.StatusSuccess,
+		Data:   results,
+		Count:  len(results),
 	}
-	output, err := json.MarshalIndent(results, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal results: %w", err)
-	}
-	fmt.Println(string(output))
-	return nil
 }
 
-// hasLogicalOperators проверяет наличие $or или $and в условиях
 func hasLogicalOperators(conditions map[string]any) bool {
 	_, hasOr := conditions["$or"]
 	_, hasAnd := conditions["$and"]
 	return hasOr || hasAnd
 }
 
-// findWithIndex выполняет поиск используя индекс
+func findFullScan(coll *storage.Collection, queryMap map[string]any) []map[string]any {
+	var results []map[string]any
+	allDocs := coll.All()
+
+	for _, doc := range allDocs {
+		if operators.MatchDocument(doc, queryMap) {
+			results = append(results, doc)
+		}
+	}
+	return results
+}
+
 func findWithIndex(coll *storage.Collection, field string, condition any) []map[string]any {
 	btree, ok := coll.GetIndex(field)
 	if !ok {
 		return nil
 	}
+
 	var docIDs []string
 	switch v := condition.(type) {
 	case float64, int, int64, string, bool:
@@ -89,21 +86,10 @@ func findWithIndex(coll *storage.Collection, field string, condition any) []map[
 			}
 		}
 	}
+
 	var results []map[string]any
 	for _, id := range docIDs {
 		if doc, ok := coll.GetByID(id); ok {
-			results = append(results, doc)
-		}
-	}
-	return results
-}
-
-// findFullScan выполняет полное сканирование коллекции
-func findFullScan(coll *storage.Collection, q *query.Query) []map[string]any {
-	var results []map[string]any
-	allDocs := coll.All()
-	for _, doc := range allDocs {
-		if operators.MatchDocument(doc, q.Conditions) {
 			results = append(results, doc)
 		}
 	}
