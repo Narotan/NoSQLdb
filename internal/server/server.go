@@ -7,14 +7,21 @@ import (
 	"net"
 	"nosql_db/internal/api"
 	"nosql_db/internal/handlers"
+	"time"
 )
 
 type TCPServer struct {
-	Address string
+	Address       string
+	Timeout       int
+	MaxConnection int
 }
 
 func New(address string) *TCPServer {
-	return &TCPServer{Address: address}
+	return &TCPServer{
+		Address:       address,
+		Timeout:       60,
+		MaxConnection: 100,
+	}
 }
 
 func (s *TCPServer) Run() error {
@@ -24,33 +31,48 @@ func (s *TCPServer) Run() error {
 	}
 	defer listener.Close()
 
-	log.Printf("Server running on %s", s.Address)
+	log.Printf("server running on %s", s.Address)
+
+	maxOpenConntecion := make(chan any, s.MaxConnection)
 
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
-			log.Printf("Conn error: %v", err)
+			log.Printf("conn error: %v", err)
 			continue
 		}
-		go handleConnection(conn)
+
+		maxOpenConntecion <- struct{}{}
+
+		go func() {
+			s.handleConnection(conn)
+
+			<-maxOpenConntecion
+		}()
 	}
 }
 
-func handleConnection(conn net.Conn) {
+func (s *TCPServer) handleConnection(conn net.Conn) {
 	defer conn.Close()
 
+	timeoutDuration := time.Duration(s.Timeout) * time.Second
+
+	_ = conn.SetDeadline(time.Now().Add(timeoutDuration))
+
 	clientAddr := conn.RemoteAddr().String()
-	log.Printf("сlient connected: %s", clientAddr)
+	log.Printf("client connected: %s", clientAddr)
 
 	decoder := json.NewDecoder(conn)
 	encoder := json.NewEncoder(conn)
 
 	for {
+		_ = conn.SetDeadline(time.Now().Add(timeoutDuration))
+
 		var req api.Request
 		err := decoder.Decode(&req)
 		if err != nil {
 			if err == io.EOF {
-				log.Printf("сlient disconnected: %s", clientAddr)
+				log.Printf("client disconnected: %s", clientAddr)
 			} else {
 				log.Printf("decode error from %s: %v", clientAddr, err)
 			}
@@ -58,6 +80,8 @@ func handleConnection(conn net.Conn) {
 		}
 
 		resp := handlers.HandleRequest(req)
+
+		_ = conn.SetDeadline(time.Now().Add(timeoutDuration))
 
 		if err := encoder.Encode(resp); err != nil {
 			log.Printf("encode error to %s: %v", clientAddr, err)

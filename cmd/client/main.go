@@ -17,7 +17,7 @@ import (
 var (
 	host     = flag.String("host", "localhost", "Server host address")
 	port     = flag.String("port", "8080", "Server port")
-	database = flag.String("db", "default_db", "Default database name")
+	database = flag.String("database", "default_db", "Default database name")
 )
 
 func main() {
@@ -135,11 +135,11 @@ func parseLineToRequest(line string) (*api.Request, error) {
 
 func printResponse(resp api.Response) {
 	if resp.Status == api.StatusError {
-		fmt.Printf("❌ ERROR: %s\n", resp.Message)
+		fmt.Printf("ERROR: %s\n", resp.Message)
 		return
 	}
 
-	fmt.Printf("✅ SUCCESS: %s (Count: %d)\n", resp.Message, resp.Count)
+	fmt.Printf("SUCCESS: %s (Count: %d)\n", resp.Message, resp.Count)
 
 	if len(resp.Data) > 0 {
 		output, err := json.MarshalIndent(resp.Data, "", "  ")

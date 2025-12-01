@@ -6,7 +6,7 @@ import (
 	"nosql_db/internal/storage"
 )
 
-func handleCreateIndex(coll *storage.Collection, req api.Request) api.Response {
+func handleCreateIndex(req api.Request) api.Response {
 	fieldName := ""
 	for k := range req.Query {
 		fieldName = k
@@ -17,12 +17,23 @@ func handleCreateIndex(coll *storage.Collection, req api.Request) api.Response {
 		return api.Response{Status: api.StatusError, Message: "field name required in query"}
 	}
 
-	if err := coll.CreateIndex(fieldName, 64); err != nil {
-		return api.Response{Status: api.StatusError, Message: fmt.Sprintf("failed to create index: %v", err)}
+	// Используем очередь для write-операции
+	result := storage.GlobalManager.Enqueue(req.Database, func(coll *storage.Collection) (storage.WriteResult, error) {
+		if err := coll.CreateIndex(fieldName, 64); err != nil {
+			return storage.WriteResult{}, fmt.Errorf("failed to create index: %w", err)
+		}
+
+		return storage.WriteResult{
+			Message: fmt.Sprintf("Index created on field '%s'", fieldName),
+		}, nil
+	})
+
+	if result.Error != nil {
+		return api.Response{Status: api.StatusError, Message: result.Error.Error()}
 	}
 
 	return api.Response{
 		Status:  api.StatusSuccess,
-		Message: fmt.Sprintf("Index created on field '%s'", fieldName),
+		Message: result.Message,
 	}
 }

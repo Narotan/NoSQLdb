@@ -12,22 +12,23 @@ func HandleRequest(req api.Request) api.Response {
 		return api.Response{Status: api.StatusError, Message: "database name is required"}
 	}
 
-	coll, err := storage.LoadCollection(req.Database)
-	if err != nil {
-		return api.Response{Status: api.StatusError, Message: fmt.Sprintf("failed to load database: %v", err)}
-	}
-
-	_ = coll.LoadAllIndexes()
-
 	switch req.Command {
 	case api.CmdInsert:
-		return handleInsert(coll, req)
+		// Write-операция через очередь
+		return handleInsert(req)
 	case api.CmdFind:
+		// Read-операция напрямую (не требует очереди)
+		coll, err := storage.GlobalManager.GetCollection(req.Database)
+		if err != nil {
+			return api.Response{Status: api.StatusError, Message: fmt.Sprintf("failed to load database: %v", err)}
+		}
 		return handleFind(coll, req)
 	case api.CmdDelete:
-		return handleDelete(coll, req)
+		// Write-операция через очередь
+		return handleDelete(req)
 	case api.CmdCreateIndex:
-		return handleCreateIndex(coll, req)
+		// Write-операция через очередь
+		return handleCreateIndex(req)
 	default:
 		return api.Response{Status: api.StatusError, Message: fmt.Sprintf("unknown command: %s", req.Command)}
 	}
